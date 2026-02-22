@@ -67,6 +67,24 @@
             items: CVItem[];
         }
 
+
+
+        interface CVRecord {
+            id: string;
+            name: string;
+            createdAt: number;
+            updatedAt: number;
+            data: CVData;
+        }
+
+        interface CVVersion {
+            id: string;
+            cvId: string;
+            createdAt: number;
+            label: string;
+            data: CVData;
+        }
+
         interface GeneratorConfig {
             employerName: string;
             googleSheetUrl: string;
@@ -440,6 +458,85 @@ Paste this URL into the "Google Sheet Web App URL" field in Ace.
 </html>`;
         };
 
+        // --- INDEXEDDB LAYER ---
+        const cvStorage = (() => {
+            const DB_NAME = 'granular-cv-builder';
+            const DB_VERSION = 1;
+
+            const openDB = () => new Promise<IDBDatabase>((resolve, reject) => {
+                const request = indexedDB.open(DB_NAME, DB_VERSION);
+                request.onupgradeneeded = () => {
+                    const db = request.result;
+                    if (!db.objectStoreNames.contains('cvs')) {
+                        db.createObjectStore('cvs', { keyPath: 'id' });
+                    }
+                    if (!db.objectStoreNames.contains('versions')) {
+                        const store = db.createObjectStore('versions', { keyPath: 'id' });
+                        store.createIndex('by_cvId', 'cvId', { unique: false });
+                    }
+                };
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.error);
+            });
+
+            const runTransaction = async (storeName, mode, operation) => {
+                const db = await openDB();
+                return new Promise((resolve, reject) => {
+                    const tx = db.transaction(storeName, mode);
+                    const store = tx.objectStore(storeName);
+                    const request = operation(store);
+                    request.onsuccess = () => resolve(request.result);
+                    request.onerror = () => reject(request.error);
+                });
+            };
+
+            return {
+                getAllCvs: async (): Promise<CVRecord[]> => {
+                    const records = await runTransaction('cvs', 'readonly', store => store.getAll()) as CVRecord[];
+                    return records.sort((a, b) => b.updatedAt - a.updatedAt);
+                },
+                getCv: async (id: string): Promise<CVRecord | undefined> => runTransaction('cvs', 'readonly', store => store.get(id)) as Promise<CVRecord | undefined>,
+                putCv: async (record: CVRecord): Promise<void> => {
+                    await runTransaction('cvs', 'readwrite', store => store.put(record));
+                },
+                deleteCv: async (id: string): Promise<void> => {
+                    await runTransaction('cvs', 'readwrite', store => store.delete(id));
+                    const db = await openDB();
+                    await new Promise((resolve, reject) => {
+                        const tx = db.transaction('versions', 'readwrite');
+                        const index = tx.objectStore('versions').index('by_cvId');
+                        const cursorRequest = index.openCursor(IDBKeyRange.only(id));
+                        cursorRequest.onsuccess = () => {
+                            const cursor = cursorRequest.result;
+                            if (cursor) {
+                                cursor.delete();
+                                cursor.continue();
+                            } else {
+                                resolve(true);
+                            }
+                        };
+                        cursorRequest.onerror = () => reject(cursorRequest.error);
+                    });
+                },
+                addVersion: async (version: CVVersion): Promise<void> => {
+                    await runTransaction('versions', 'readwrite', store => store.put(version));
+                },
+                getVersionsForCv: async (cvId: string): Promise<CVVersion[]> => {
+                    const db = await openDB();
+                    return new Promise((resolve, reject) => {
+                        const tx = db.transaction('versions', 'readonly');
+                        const index = tx.objectStore('versions').index('by_cvId');
+                        const request = index.getAll(cvId);
+                        request.onsuccess = () => {
+                            const versions = (request.result as CVVersion[]) || [];
+                            resolve(versions.sort((a, b) => b.createdAt - a.createdAt));
+                        };
+                        request.onerror = () => reject(request.error);
+                    });
+                }
+            };
+        })();
+
         // --- COMPONENTS ---
         const Icons = {
             Download: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>,
@@ -453,9 +550,13 @@ Paste this URL into the "Google Sheet Web App URL" field in Ace.
         };
 
         const App = () => {
+            const [activeCvId, setActiveCvId] = useState('default-cv');
+            const [cvList, setCvList] = useState<CVRecord[]>([]);
+            const [versionTimeline, setVersionTimeline] = useState<CVVersion[]>([]);
             const [cvData, setCvData] = useState(INITIAL_CV_DATA);
             const [levels, setLevels] = useState(DEFAULT_LEVELS);
             const [activeTab, setActiveTab] = useState('content');
+            const [isDbReady, setIsDbReady] = useState(false);
             
             // Generation Config State
             const [employerName, setEmployerName] = useState('');
@@ -469,6 +570,217 @@ Paste this URL into the "Google Sheet Web App URL" field in Ace.
             
             // Section Management State
             const [newSectionName, setNewSectionName] = useState('');
+            const autosaveTimerRef = useRef(null);
+            const versionTimerRef = useRef(null);
+            const isHydratingRef = useRef(true);
+            const previousCvDataRef = useRef(INITIAL_CV_DATA);
+
+            const currentCvName = cvList.find(cv => cv.id === activeCvId)?.name || 'Untitled CV';
+
+            const isMajorEdit = (nextData: CVData, prevData: CVData) => {
+                const itemCountChanged = nextData.items.length !== prevData.items.length;
+                const sectionCountChanged = nextData.sectionOrder.length !== prevData.sectionOrder.length;
+                const profileShift = Math.abs((nextData.personalInfo.tagline || '').length - (prevData.personalInfo.tagline || '').length) > 30;
+                const bodyShift = Math.abs(nextData.items.reduce((sum, item) => sum + (item.content?.length || 0), 0) - prevData.items.reduce((sum, item) => sum + (item.content?.length || 0), 0)) > 200;
+                return itemCountChanged || sectionCountChanged || profileShift || bodyShift;
+            };
+
+            useEffect(() => {
+                const bootstrap = async () => {
+                    try {
+                        const existing = await cvStorage.getAllCvs();
+                        if (!existing.length) {
+                            const starterRecord: CVRecord = {
+                                id: 'default-cv',
+                                name: 'Primary CV',
+                                createdAt: Date.now(),
+                                updatedAt: Date.now(),
+                                data: INITIAL_CV_DATA
+                            };
+                            await cvStorage.putCv(starterRecord);
+                            setCvList([starterRecord]);
+                            setActiveCvId(starterRecord.id);
+                            setCvData(starterRecord.data);
+                            previousCvDataRef.current = starterRecord.data;
+                        } else {
+                            setCvList(existing);
+                            setActiveCvId(existing[0].id);
+                            setCvData(existing[0].data);
+                            previousCvDataRef.current = existing[0].data;
+                        }
+                    } catch (error) {
+                        console.error('Failed to initialize IndexedDB', error);
+                    } finally {
+                        setIsDbReady(true);
+                        setTimeout(() => {
+                    isHydratingRef.current = false;
+                }, 0);
+                    }
+                };
+                bootstrap();
+            }, []);
+
+            useEffect(() => {
+                if (!isDbReady || !activeCvId) return;
+                const loadVersions = async () => {
+                    const versions = await cvStorage.getVersionsForCv(activeCvId);
+                    setVersionTimeline(versions);
+                };
+                loadVersions();
+            }, [activeCvId, isDbReady]);
+
+            useEffect(() => {
+                if (!isDbReady || !activeCvId || isHydratingRef.current) return;
+                if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+                autosaveTimerRef.current = setTimeout(async () => {
+                    const now = Date.now();
+                    const existingRecord = cvList.find(cv => cv.id === activeCvId);
+                    const updatedRecord: CVRecord = {
+                        id: activeCvId,
+                        name: existingRecord?.name || cvData.personalInfo.name || 'Untitled CV',
+                        createdAt: existingRecord?.createdAt || now,
+                        updatedAt: now,
+                        data: cvData
+                    };
+                    await cvStorage.putCv(updatedRecord);
+                    setCvList(prev => [updatedRecord, ...prev.filter(cv => cv.id !== activeCvId)].sort((a, b) => b.updatedAt - a.updatedAt));
+                }, 500);
+
+                return () => {
+                    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+                };
+            }, [cvData, activeCvId, isDbReady]);
+
+            useEffect(() => {
+                if (!isDbReady || !activeCvId || isHydratingRef.current) return;
+                const previousData = previousCvDataRef.current;
+                if (!isMajorEdit(cvData, previousData)) {
+                    previousCvDataRef.current = cvData;
+                    return;
+                }
+
+                if (versionTimerRef.current) clearTimeout(versionTimerRef.current);
+                versionTimerRef.current = setTimeout(async () => {
+                    const version: CVVersion = {
+                        id: `version-${activeCvId}-${Date.now()}`,
+                        cvId: activeCvId,
+                        createdAt: Date.now(),
+                        label: `Major edit - ${new Date().toLocaleString()}`,
+                        data: cvData
+                    };
+                    await cvStorage.addVersion(version);
+                    setVersionTimeline(prev => [version, ...prev]);
+                    previousCvDataRef.current = cvData;
+                }, 1200);
+            }, [cvData, activeCvId, isDbReady]);
+
+
+
+            const handleCreateCv = async () => {
+                const name = prompt('Name for the new CV:', `CV ${cvList.length + 1}`)?.trim();
+                if (!name) return;
+                const id = `cv-${Date.now()}`;
+                const record: CVRecord = {
+                    id,
+                    name,
+                    createdAt: Date.now(),
+                    updatedAt: Date.now(),
+                    data: JSON.parse(JSON.stringify(INITIAL_CV_DATA))
+                };
+                await cvStorage.putCv(record);
+                setCvList(prev => [record, ...prev]);
+                isHydratingRef.current = true;
+                setActiveCvId(id);
+                setCvData(record.data);
+                previousCvDataRef.current = record.data;
+                setTimeout(() => {
+                    isHydratingRef.current = false;
+                }, 0);
+            };
+
+            const handleDuplicateCv = async () => {
+                const source = cvList.find(cv => cv.id === activeCvId);
+                if (!source) return;
+                const id = `cv-${Date.now()}`;
+                const record: CVRecord = {
+                    id,
+                    name: `${source.name} (Copy)`,
+                    createdAt: Date.now(),
+                    updatedAt: Date.now(),
+                    data: JSON.parse(JSON.stringify(source.data))
+                };
+                await cvStorage.putCv(record);
+                setCvList(prev => [record, ...prev]);
+                isHydratingRef.current = true;
+                setActiveCvId(id);
+                setCvData(record.data);
+                previousCvDataRef.current = record.data;
+                setTimeout(() => {
+                    isHydratingRef.current = false;
+                }, 0);
+            };
+
+            const handleRenameCv = async () => {
+                const current = cvList.find(cv => cv.id === activeCvId);
+                if (!current) return;
+                const name = prompt('Rename CV:', current.name)?.trim();
+                if (!name || name === current.name) return;
+                const renamed = { ...current, name, updatedAt: Date.now() };
+                await cvStorage.putCv(renamed);
+                setCvList(prev => prev.map(cv => cv.id === activeCvId ? renamed : cv).sort((a, b) => b.updatedAt - a.updatedAt));
+            };
+
+            const handleDeleteCv = async () => {
+                if (cvList.length <= 1) {
+                    alert('At least one CV must remain.');
+                    return;
+                }
+                const current = cvList.find(cv => cv.id === activeCvId);
+                if (!current) return;
+                if (!confirm(`Delete "${current.name}" and all saved versions?`)) return;
+                await cvStorage.deleteCv(activeCvId);
+                const remaining = cvList.filter(cv => cv.id !== activeCvId);
+                const fallback = remaining[0];
+                setCvList(remaining);
+                if (fallback) {
+                    isHydratingRef.current = true;
+                    setActiveCvId(fallback.id);
+                    setCvData(fallback.data);
+                    previousCvDataRef.current = fallback.data;
+                    setTimeout(() => {
+                        isHydratingRef.current = false;
+                    }, 0);
+                }
+            };
+
+            const handleSwitchCv = async (id: string) => {
+                if (id === activeCvId) return;
+                const next = cvList.find(cv => cv.id === id);
+                if (!next) return;
+                isHydratingRef.current = true;
+                setActiveCvId(id);
+                setCvData(next.data);
+                previousCvDataRef.current = next.data;
+                setTimeout(() => {
+                    isHydratingRef.current = false;
+                }, 0);
+            };
+
+            const handleRestoreVersion = async (version: CVVersion) => {
+                if (!confirm(`Restore version from ${new Date(version.createdAt).toLocaleString()}?`)) return;
+                isHydratingRef.current = true;
+                setCvData(version.data);
+                previousCvDataRef.current = version.data;
+                const current = cvList.find(cv => cv.id === activeCvId);
+                if (current) {
+                    const updated = { ...current, data: version.data, updatedAt: Date.now() };
+                    await cvStorage.putCv(updated);
+                    setCvList(prev => prev.map(cv => cv.id === activeCvId ? updated : cv).sort((a, b) => b.updatedAt - a.updatedAt));
+                }
+                setTimeout(() => {
+                    isHydratingRef.current = false;
+                }, 0);
+            };
 
             // --- Handlers ---
 
@@ -677,6 +989,42 @@ Paste this URL into the "Google Sheet Web App URL" field in Ace.
                     {/* TAB: CONTENT EDITOR */}
                     {activeTab === 'content' && (
                     <div className="space-y-6">
+                        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 space-y-4">
+                            <div className="flex flex-col lg:flex-row lg:items-center gap-3 lg:justify-between">
+                                <div>
+                                    <h2 className="text-lg font-bold text-slate-800">CV Workspace</h2>
+                                    <p className="text-sm text-slate-500">Editing: <span className="font-semibold text-slate-700">{currentCvName}</span></p>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                    <button onClick={handleCreateCv} className="text-sm bg-blue-600 text-white px-3 py-2 rounded hover:bg-blue-700">New</button>
+                                    <button onClick={handleDuplicateCv} className="text-sm bg-slate-100 text-slate-700 px-3 py-2 rounded border border-slate-300 hover:bg-slate-200">Duplicate</button>
+                                    <button onClick={handleRenameCv} className="text-sm bg-slate-100 text-slate-700 px-3 py-2 rounded border border-slate-300 hover:bg-slate-200">Rename</button>
+                                    <button onClick={handleDeleteCv} className="text-sm bg-red-50 text-red-700 px-3 py-2 rounded border border-red-200 hover:bg-red-100">Delete</button>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1 block">Switch CV</label>
+                                    <select value={activeCvId} onChange={(e) => handleSwitchCv(e.target.value)} className="w-full p-2 border border-gray-300 rounded outline-none focus:border-blue-500">
+                                        {cvList.map(cv => (
+                                            <option key={cv.id} value={cv.id}>{cv.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1 block">Version Timeline</label>
+                                    <div className="max-h-32 overflow-y-auto border border-slate-200 rounded p-2 bg-slate-50 space-y-1">
+                                        {versionTimeline.length === 0 && <p className="text-xs text-slate-500">No major edits captured yet.</p>}
+                                        {versionTimeline.map(version => (
+                                            <button key={version.id} onClick={() => handleRestoreVersion(version)} className="w-full text-left text-xs p-2 bg-white border border-slate-200 rounded hover:border-blue-300 hover:bg-blue-50">
+                                                <div className="font-semibold text-slate-700">{version.label}</div>
+                                                <div className="text-slate-500">{new Date(version.createdAt).toLocaleString()}</div>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
                         <h2 className="text-lg font-bold text-slate-800 mb-4">Personal Info</h2>
                         <div className="flex flex-col md:flex-row gap-6">
