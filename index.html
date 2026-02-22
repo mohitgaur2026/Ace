@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Granular CV Builder</title>
+    <title>Ace</title>
     <meta name="description" content="Generate interactive CVs" />
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -150,7 +150,7 @@
             ]
         };
 
-        const ANALYTICS_GUIDE_MD = `# Setting up Google Sheets Analytics for Granular CV
+        const ANALYTICS_GUIDE_MD = `# Setting up Google Sheets Analytics for Ace
 
 This guide explains how to create a backend for your CV using Google Sheets to track who views your CV and at what granularity.
 
@@ -202,7 +202,7 @@ function doPost(e) {
 5. Copy the **Web app URL** generated (it ends in \`/exec\`).
 
 ## 4. Use the URL
-Paste this URL into the "Google Sheet Web App URL" field in the Granular CV Builder.
+Paste this URL into the "Google Sheet Web App URL" field in Ace.
 `;
 
         // --- SERVICE ---
@@ -258,6 +258,7 @@ Paste this URL into the "Google Sheet Web App URL" field in the Granular CV Buil
                 <input type="range" min="1" max="10" value="${config.defaultLevel}" id="granularity-slider" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer">
             </div>
             <div class="flex items-center gap-2">
+                <div class="text-xs text-slate-400 font-semibold uppercase tracking-wide hidden sm:block">Ace Viewer</div>
                 <div class="text-xs text-slate-400 font-mono hidden sm:block">
                     Viewing as: <span class="font-bold text-slate-600">${config.employerName}</span>
                 </div>
@@ -272,7 +273,7 @@ Paste this URL into the "Google Sheet Web App URL" field in the Granular CV Buil
     </main>
 
     <footer class="text-center text-slate-400 text-sm py-8 print:hidden">
-        <p>Interactive CV generated for ${config.employerName}</p>
+        <p>Ace interactive CV generated for ${config.employerName}</p>
     </footer>
 
     <!-- Data Injection -->
@@ -613,7 +614,7 @@ Paste this URL into the "Google Sheet Web App URL" field in the Granular CV Buil
                 const urlHtml = URL.createObjectURL(blobHtml);
                 const aHtml = document.createElement('a');
                 aHtml.href = urlHtml;
-                aHtml.download = `${employerName.replace(/\s+/g, '_')}_CV.html`;
+                aHtml.download = `${employerName.replace(/\s+/g, '_')}_Ace_CV.html`;
                 document.body.appendChild(aHtml);
                 aHtml.click();
                 document.body.removeChild(aHtml);
@@ -638,7 +639,7 @@ Paste this URL into the "Google Sheet Web App URL" field in the Granular CV Buil
                 <nav className="bg-slate-900 text-white p-4 shadow-lg sticky top-0 z-20">
                     <div className="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
                         <div className="flex items-center gap-2">
-                            <span className="text-xl font-bold tracking-tight">GranularCV</span>
+                            <span className="text-xl font-bold tracking-tight">Ace</span>
                             <span className="bg-blue-600 text-xs px-2 py-0.5 rounded-full">Builder</span>
                         </div>
                         <div className="flex overflow-x-auto gap-2 w-full sm:w-auto pb-1 sm:pb-0 no-scrollbar">
