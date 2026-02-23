@@ -91,6 +91,7 @@
             defaultLevel: number;
             levels: GranularityLevel[];
             includeTestButton: boolean;
+            exportSessionId: string;
         }
 
         // --- CONSTANTS ---
@@ -294,6 +295,31 @@ Paste this URL into the "Google Sheet Web App URL" field in Ace.
         <p>Ace interactive CV generated for ${config.employerName}</p>
     </footer>
 
+    <div id="privacy-modal" class="fixed inset-0 z-[100] bg-slate-950/70 p-4 md:p-6 flex items-center justify-center print:hidden" role="dialog" aria-modal="true" aria-labelledby="privacy-title">
+        <div class="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl border border-slate-200">
+            <div class="p-5 md:p-8">
+                <h2 id="privacy-title" class="text-xl md:text-2xl font-semibold text-slate-900 mb-2">Privacy Notice & Consent</h2>
+                <p class="text-sm md:text-base text-slate-600 leading-relaxed mb-4">
+                    This interactive CV can collect basic engagement analytics after you choose your preference. Your choice is saved only for this exported CV file session.
+                </p>
+                <div class="space-y-3 text-sm md:text-base text-slate-700 leading-relaxed">
+                    <p><strong>Data categories:</strong> employer label, timestamp, time spent, maximum scroll percentage, and final granularity level.</p>
+                    <p><strong>Purpose:</strong> understand whether this CV is being reviewed and at what level of detail to improve future applications.</p>
+                    <p><strong>Retention:</strong> analytics records are stored in the configured Google Sheet until manually deleted by the CV owner.</p>
+                    <p><strong>Legal basis / consent:</strong> analytics are processed only with your explicit consent by selecting <em>Accept & Continue</em>. Without consent, only strictly necessary on-page functionality remains enabled.</p>
+                    <p><strong>Your rights:</strong> you may decline now, revisit your choice later, or request deletion/correction by contacting the CV owner directly.</p>
+                    <p><strong>Contact path:</strong> use the contact details shown in the CV header (email/LinkedIn) to submit privacy requests.</p>
+                    <p><strong>Analytics usage:</strong> no advertising profiling is performed; non-essential analytics are disabled if you decline.</p>
+                </div>
+
+                <div class="mt-6 flex flex-col sm:flex-row gap-3 sm:justify-end">
+                    <button id="privacy-decline" class="w-full sm:w-auto px-4 py-2.5 rounded-lg border border-slate-300 text-slate-700 font-medium hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-400">Decline Analytics</button>
+                    <button id="privacy-accept" class="w-full sm:w-auto px-4 py-2.5 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400">Accept & Continue</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Data Injection -->
     <script id="cv-data" type="application/json">${serializedData}<\/script>
     <script id="cv-config" type="application/json">${serializedConfig}<\/script>
@@ -307,10 +333,38 @@ Paste this URL into the "Google Sheet Web App URL" field in Ace.
             const root = document.getElementById('cv-root');
             const slider = document.getElementById('granularity-slider');
             const levelNameLabel = document.getElementById('level-name');
+            const privacyModal = document.getElementById('privacy-modal');
+            const acceptBtn = document.getElementById('privacy-accept');
+            const declineBtn = document.getElementById('privacy-decline');
+            const CONSENT_KEY = 'cv-privacy-consent:${config.exportSessionId}';
+            let consentStatus = localStorage.getItem(CONSENT_KEY);
             
             let startTime = Date.now();
             let maxScroll = 0;
             let currentLevel = parseInt(slider.value);
+
+            function applyConsentUI() {
+                const hasChoice = consentStatus === 'accepted' || consentStatus === 'declined';
+                if (privacyModal) {
+                    privacyModal.style.display = hasChoice ? 'none' : 'flex';
+                }
+                document.body.style.overflow = hasChoice ? '' : 'hidden';
+            }
+
+            function setConsent(status) {
+                consentStatus = status;
+                localStorage.setItem(CONSENT_KEY, status);
+                applyConsentUI();
+            }
+
+            function isAnalyticsAllowed() {
+                return consentStatus === 'accepted';
+            }
+
+            acceptBtn?.addEventListener('click', () => setConsent('accepted'));
+            declineBtn?.addEventListener('click', () => setConsent('declined'));
+
+            applyConsentUI();
             
             // Expose for the test button
             window.testAnalytics = function() {
@@ -425,6 +479,13 @@ Paste this URL into the "Google Sheet Web App URL" field in Ace.
             function sendAnalytics(isTest = false) {
                 if (!config.googleSheetUrl) {
                     if(isTest) alert("No Google Sheet URL configured.");
+                    return;
+                }
+
+                if (!isAnalyticsAllowed()) {
+                    if (isTest) {
+                        alert('Analytics transmission is disabled because consent was declined or not yet provided.');
+                    }
                     return;
                 }
                 
@@ -563,6 +624,12 @@ Paste this URL into the "Google Sheet Web App URL" field in Ace.
             const [sheetUrl, setSheetUrl] = useState('');
             const [defaultLevel, setDefaultLevel] = useState(5);
             const [includeTestButton, setIncludeTestButton] = useState(true);
+            const [exportSessionId] = useState(() => {
+                if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+                    return crypto.randomUUID();
+                }
+                return `session-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+            });
 
             // PDF Import State
             const fileInputRef = useRef(null);
@@ -918,7 +985,8 @@ Paste this URL into the "Google Sheet Web App URL" field in Ace.
                     googleSheetUrl: sheetUrl,
                     defaultLevel,
                     levels,
-                    includeTestButton
+                    includeTestButton,
+                    exportSessionId
                 };
 
                 const htmlContent = generateCVHTML(cvData, config);
