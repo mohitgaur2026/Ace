@@ -73,6 +73,9 @@
             defaultLevel: number;
             levels: GranularityLevel[];
             includeTestButton: boolean;
+            responsiveStrategy: 'mobile-first' | 'desktop-first' | 'print-first';
+            previewDevice: 'auto' | 'mobile' | 'tablet' | 'desktop';
+            printPreview: boolean;
         }
 
         // --- CONSTANTS ---
@@ -239,35 +242,73 @@ Paste this URL into the "Google Sheet Web App URL" field in the Granular CV Buil
         }
         .fade-in { animation: fadeIn 0.5s ease-in-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        :root {
+            --cv-space: 1.5rem;
+            --cv-copy: 1rem;
+            --cv-heading: 1.65rem;
+            --cv-density: 1;
+        }
+        body { line-height: calc(1.55 - ((var(--cv-density) - 1) * 0.12)); }
+        #cv-root { padding: var(--cv-space); }
+        .adaptive-title { font-size: var(--cv-heading); }
+        .adaptive-copy { font-size: var(--cv-copy); }
+        .adaptive-stack { gap: calc(1.4rem / var(--cv-density)); }
+        .adaptive-card { padding: calc(0.9rem / var(--cv-density)) 0; }
+        body.viewport-compact { --cv-space: 1rem; --cv-copy: 0.92rem; --cv-heading: 1.38rem; --cv-density: 1.12; }
+        body.viewport-standard { --cv-space: 1.4rem; --cv-copy: 1rem; --cv-heading: 1.65rem; --cv-density: 1; }
+        body.viewport-wide { --cv-space: 2rem; --cv-copy: 1.07rem; --cv-heading: 1.95rem; --cv-density: 0.9; }
+        body.preview-mobile #cv-root { max-width: 420px; }
+        body.preview-tablet #cv-root { max-width: 860px; }
+        body.preview-desktop #cv-root { max-width: 1120px; }
+        body.preview-print .screen-only { display: none !important; }
+        body.preview-print { background: #f8fafc; }
         @media print {
-            .page-break { page-break-before: always; }
-            .no-print { display: none !important; }
+            @page { margin: 0.65in 0.7in; }
+            .page-break { break-before: page; page-break-before: always; }
+            .no-print, .screen-only { display: none !important; }
+            body { background: #fff !important; color: #0f172a; font-size: 11pt; }
+            #cv-root { box-shadow: none !important; margin: 0 !important; max-width: none !important; padding: 0 !important; }
+            .cv-section { break-inside: avoid-page; page-break-inside: avoid; margin-bottom: 1rem !important; }
+            .cv-item { break-inside: avoid-page; page-break-inside: avoid; }
+            h2, h3 { break-after: avoid-page; page-break-after: avoid; }
+            p, li, .adaptive-copy { widows: 3; orphans: 3; }
+            .section-group-end { break-after: auto; }
+            a { color: #0f172a !important; text-decoration: none !important; }
         }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-900 min-h-screen pb-20">
 
     <!-- Sticky Header for Controls -->
-    <div class="sticky top-0 z-50 bg-white/90 backdrop-blur-md shadow-sm border-b border-slate-200 p-4 print:hidden">
-        <div class="max-w-4xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
-            <div class="flex flex-col w-full md:w-2/3">
+    <div class="sticky top-0 z-50 bg-white/90 backdrop-blur-md shadow-sm border-b border-slate-200 p-4 print:hidden screen-only">
+        <div class="max-w-5xl mx-auto flex flex-col gap-3">
+            <div class="flex flex-col w-full">
                 <div class="flex justify-between text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">
                     <span id="level-name">Level ${config.defaultLevel}: Loading...</span>
                     <span>Granularity ${config.levels.length}</span>
                 </div>
                 <input type="range" min="1" max="10" value="${config.defaultLevel}" id="granularity-slider" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer">
             </div>
-            <div class="flex items-center gap-2">
-                <div class="text-xs text-slate-400 font-mono hidden sm:block">
+            <div class="flex flex-wrap items-center gap-2">
+                <div class="text-xs text-slate-400 font-mono">
                     Viewing as: <span class="font-bold text-slate-600">${config.employerName}</span>
                 </div>
+                <select id="device-preview" class="text-xs border border-slate-300 rounded px-2 py-1 bg-white">
+                    <option value="auto">Auto viewport</option>
+                    <option value="mobile">Mobile</option>
+                    <option value="tablet">Tablet</option>
+                    <option value="desktop">Desktop</option>
+                </select>
+                <label class="text-xs text-slate-600 inline-flex items-center gap-1">
+                    <input id="print-preview-toggle" type="checkbox" class="accent-blue-600"> Print preview
+                </label>
                 ${config.includeTestButton ? `<button onclick="testAnalytics()" class="ml-2 px-2 py-1 bg-amber-100 text-amber-800 text-xs rounded border border-amber-300 hover:bg-amber-200">Test Analytics</button>` : ''}
             </div>
         </div>
     </div>
 
     <!-- CV Container -->
-    <main id="cv-root" class="max-w-4xl mx-auto p-6 md:p-12 shadow-2xl bg-white mt-4 md:mt-8 mb-12 min-h-[1100px] print:shadow-none print:mt-0 print:p-0">
+    <main id="cv-root" class="max-w-4xl mx-auto p-6 md:p-12 shadow-2xl bg-white mt-4 md:mt-8 mb-12 min-h-[1100px] print:shadow-none print:mt-0 print:p-0 transition-all duration-200">
         <!-- Content injected via JS -->
     </main>
 
@@ -288,10 +329,50 @@ Paste this URL into the "Google Sheet Web App URL" field in the Granular CV Buil
             const root = document.getElementById('cv-root');
             const slider = document.getElementById('granularity-slider');
             const levelNameLabel = document.getElementById('level-name');
+            const devicePreviewSelect = document.getElementById('device-preview');
+            const printPreviewToggle = document.getElementById('print-preview-toggle');
             
             let startTime = Date.now();
             let maxScroll = 0;
             let currentLevel = parseInt(slider.value);
+
+            function getEffectiveWidth() {
+                const map = { mobile: 390, tablet: 810, desktop: 1280 };
+                if (config.previewDevice && config.previewDevice !== 'auto') return map[config.previewDevice] || window.innerWidth;
+                if (devicePreviewSelect && devicePreviewSelect.value !== 'auto') return map[devicePreviewSelect.value] || window.innerWidth;
+                return window.innerWidth;
+            }
+
+            function computeViewportClass() {
+                const width = getEffectiveWidth();
+                const strategy = config.responsiveStrategy || 'mobile-first';
+                if (strategy === 'desktop-first') {
+                    if (width >= 1200) return 'viewport-wide';
+                    if (width >= 760) return 'viewport-standard';
+                    return 'viewport-compact';
+                }
+                if (strategy === 'print-first') {
+                    if (width >= 960) return 'viewport-standard';
+                    return 'viewport-compact';
+                }
+                if (width < 640) return 'viewport-compact';
+                if (width < 1080) return 'viewport-standard';
+                return 'viewport-wide';
+            }
+
+            function applyAdaptiveEnvironment() {
+                const viewportClass = computeViewportClass();
+                document.body.classList.remove('viewport-compact', 'viewport-standard', 'viewport-wide');
+                document.body.classList.add(viewportClass);
+                document.body.dataset.strategy = config.responsiveStrategy || 'mobile-first';
+
+                const deviceValue = devicePreviewSelect ? devicePreviewSelect.value : (config.previewDevice || 'auto');
+                document.body.classList.remove('preview-mobile', 'preview-tablet', 'preview-desktop');
+                if (deviceValue !== 'auto') document.body.classList.add(`preview-${deviceValue}`);
+
+                const showPrintPreview = !!(printPreviewToggle && printPreviewToggle.checked);
+                document.body.classList.toggle('preview-print', showPrintPreview);
+            }
             
             // Expose for the test button
             window.testAnalytics = function() {
@@ -331,15 +412,15 @@ Paste this URL into the "Google Sheet Web App URL" field in the Granular CV Buil
 
                 // Header
                 html += \`
-                    <header class="mb-8 border-b border-slate-900 pb-8 text-center fade-in">
+                    <header class="mb-8 border-b border-slate-900 pb-8 text-center fade-in cv-section">
                         \${data.personalInfo.image ? \`<img src="\${data.personalInfo.image}" alt="Profile" class="w-32 h-32 rounded-full mx-auto mb-4 object-cover border-4 border-slate-100 shadow-md">\` : ''}
                         
                         <div class="flex items-center justify-center gap-3 flex-wrap mb-2">
-                            <h1 class="text-3xl md:text-4xl font-serif font-bold text-slate-900">\${data.personalInfo.name}</h1>
+                            <h1 class="adaptive-title text-3xl md:text-4xl font-serif font-bold text-slate-900">\${data.personalInfo.name}</h1>
                             \${data.personalInfo.pronouns ? \`<span class="text-sm text-slate-500 bg-slate-100 px-2 py-1 rounded-full sans">\${data.personalInfo.pronouns}</span>\` : ''}
                         </div>
                         
-                        <p class="text-lg italic text-slate-600 mb-4 px-4">\${data.personalInfo.tagline}</p>
+                        <p class="adaptive-copy text-lg italic text-slate-600 mb-4 px-4">\${data.personalInfo.tagline}</p>
                         
                         <div class="flex flex-wrap justify-center gap-4 text-sm sans text-slate-500 px-4">
                             \${data.personalInfo.email ? \`<span>\${data.personalInfo.email}</span>\` : ''}
@@ -371,21 +452,21 @@ Paste this URL into the "Google Sheet Web App URL" field in the Granular CV Buil
                 sectionOrder.forEach(section => {
                     if (grouped[section] && grouped[section].length > 0) {
                         html += \`
-                            <section class="mb-8 fade-in" data-section="\${section}">
+                            <section class="mb-8 fade-in cv-section section-group-end" data-section="\${section}">
                                 <h2 class="text-xl font-bold uppercase tracking-widest border-b-2 border-slate-900 mb-4 pb-1">\${section}</h2>
-                                <div class="space-y-6">
+                                <div class="space-y-6 adaptive-stack">
                         \`;
                         
                         grouped[section].forEach(item => {
                             html += \`
-                                <div class="group break-inside-avoid">
+                                <div class="group break-inside-avoid cv-item adaptive-card">
                                     <div class="flex flex-col md:flex-row md:justify-between md:items-baseline mb-1">
-                                        <h3 class="text-lg font-bold text-slate-800">\${item.title}</h3>
+                                        <h3 class="text-lg font-bold text-slate-800 adaptive-title">\${item.title}</h3>
                                         \${item.date ? \`<span class="text-sm font-mono text-slate-500 shrink-0">\${item.date}</span>\` : ''}
                                     </div>
                                     \${item.subtitle ? \`<div class="text-md italic text-slate-700 mb-1">\${item.subtitle}</div>\` : ''}
                                     \${item.location ? \`<div class="text-xs text-slate-400 mb-2">\${item.location}</div>\` : ''}
-                                    <div class="text-sm leading-relaxed text-slate-600 prose prose-sm max-w-none">
+                                    <div class="adaptive-copy text-sm leading-relaxed text-slate-600 prose prose-sm max-w-none">
                                         \${item.content}
                                     </div>
                                 </div>
@@ -431,6 +512,17 @@ Paste this URL into the "Google Sheet Web App URL" field in the Granular CV Buil
                 if (document.visibilityState === 'hidden') sendAnalytics(false);
             });
 
+            if (devicePreviewSelect) {
+                devicePreviewSelect.value = config.previewDevice || 'auto';
+                devicePreviewSelect.addEventListener('change', applyAdaptiveEnvironment);
+            }
+            if (printPreviewToggle) {
+                printPreviewToggle.checked = !!config.printPreview;
+                printPreviewToggle.addEventListener('change', applyAdaptiveEnvironment);
+            }
+            window.addEventListener('resize', applyAdaptiveEnvironment);
+
+            applyAdaptiveEnvironment();
             render(config.defaultLevel);
 
         })();
@@ -461,6 +553,9 @@ Paste this URL into the "Google Sheet Web App URL" field in the Granular CV Buil
             const [sheetUrl, setSheetUrl] = useState('');
             const [defaultLevel, setDefaultLevel] = useState(5);
             const [includeTestButton, setIncludeTestButton] = useState(true);
+            const [responsiveStrategy, setResponsiveStrategy] = useState<'mobile-first' | 'desktop-first' | 'print-first'>('mobile-first');
+            const [previewDevice, setPreviewDevice] = useState<'auto' | 'mobile' | 'tablet' | 'desktop'>('auto');
+            const [printPreview, setPrintPreview] = useState(false);
 
             // PDF Import State
             const fileInputRef = useRef(null);
@@ -605,7 +700,10 @@ Paste this URL into the "Google Sheet Web App URL" field in the Granular CV Buil
                     googleSheetUrl: sheetUrl,
                     defaultLevel,
                     levels,
-                    includeTestButton
+                    includeTestButton,
+                    responsiveStrategy,
+                    previewDevice,
+                    printPreview
                 };
 
                 const htmlContent = generateCVHTML(cvData, config);
@@ -962,6 +1060,43 @@ Paste this URL into the "Google Sheet Web App URL" field in the Granular CV Buil
                                     />
                                     <span className="font-bold text-blue-600 w-8">{defaultLevel}</span>
                                 </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 rounded-lg bg-slate-50 border border-slate-200">
+                                <div>
+                                    <label className="block text-sm font-semibold text-slate-700 mb-2">Responsive Strategy</label>
+                                    <select
+                                        value={responsiveStrategy}
+                                        onChange={(e) => setResponsiveStrategy(e.target.value as 'mobile-first' | 'desktop-first' | 'print-first')}
+                                        className="w-full p-2 border border-gray-300 rounded-lg bg-white"
+                                    >
+                                        <option value="mobile-first">Mobile-first</option>
+                                        <option value="desktop-first">Desktop-first</option>
+                                        <option value="print-first">Print-first</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-semibold text-slate-700 mb-2">Device Preview Default</label>
+                                    <select
+                                        value={previewDevice}
+                                        onChange={(e) => setPreviewDevice(e.target.value as 'auto' | 'mobile' | 'tablet' | 'desktop')}
+                                        className="w-full p-2 border border-gray-300 rounded-lg bg-white"
+                                    >
+                                        <option value="auto">Auto viewport</option>
+                                        <option value="mobile">Mobile</option>
+                                        <option value="tablet">Tablet</option>
+                                        <option value="desktop">Desktop</option>
+                                    </select>
+                                </div>
+                                <label className="sm:col-span-2 inline-flex items-center gap-2 text-sm text-slate-700">
+                                    <input
+                                        type="checkbox"
+                                        checked={printPreview}
+                                        onChange={(e) => setPrintPreview(e.target.checked)}
+                                        className="w-4 h-4 text-blue-600 rounded"
+                                    />
+                                    Start exported file in print-preview style
+                                </label>
                             </div>
 
                             <div className="flex items-center gap-3 py-2">
