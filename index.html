@@ -67,12 +67,55 @@
             items: CVItem[];
         }
 
+        interface ThemeOption {
+            id: string;
+            name: string;
+            description: string;
+            primary: string;
+            accent: string;
+            text: string;
+            muted: string;
+            background: string;
+        }
+
+        interface SpacingOption {
+            id: string;
+            name: string;
+            container: string;
+            sectionGap: string;
+            itemGap: string;
+        }
+
+        interface BackgroundOption {
+            id: string;
+            name: string;
+            bodyClass: string;
+            cardClass: string;
+        }
+
+        interface LayoutPreset {
+            id: string;
+            name: string;
+            description: string;
+            containerClass: string;
+            headerClass: string;
+            sectionClass: string;
+            sectionTitleClass: string;
+            itemClass: string;
+            isTimeline?: boolean;
+            isSidebar?: boolean;
+        }
+
         interface GeneratorConfig {
             employerName: string;
             googleSheetUrl: string;
             defaultLevel: number;
             levels: GranularityLevel[];
             includeTestButton: boolean;
+            layoutPreset: string;
+            colorPalette: string;
+            spacing: string;
+            backgroundStyle: string;
         }
 
         // --- CONSTANTS ---
@@ -92,6 +135,35 @@
         const DEFAULT_SECTIONS = [
             'Profile', 'Education', 'Experience', 'Projects', 'Writings', 
             'Awards', 'Certificates', 'Organisations', 'Skills', 'Interests', 'References'
+        ];
+
+
+        const LAYOUT_PRESETS: LayoutPreset[] = [
+            { id: 'classic', name: 'Classic', description: 'Traditional single-column resume.', containerClass: 'max-w-4xl mx-auto', headerClass: 'text-center border-b border-slate-900 pb-8 mb-8', sectionClass: 'mb-8', sectionTitleClass: 'text-xl font-bold uppercase tracking-widest border-b-2 border-slate-900 mb-4 pb-1', itemClass: 'mb-5' },
+            { id: 'modern', name: 'Modern', description: 'Clean cards and lighter dividers.', containerClass: 'max-w-5xl mx-auto', headerClass: 'rounded-2xl p-8 mb-6 shadow-sm border', sectionClass: 'mb-6 rounded-xl border p-5 shadow-sm', sectionTitleClass: 'text-lg font-semibold tracking-wide mb-4', itemClass: 'mb-4 last:mb-0' },
+            { id: 'compact', name: 'Compact', description: 'Dense spacing for concise CVs.', containerClass: 'max-w-3xl mx-auto', headerClass: 'border-b pb-4 mb-4', sectionClass: 'mb-4', sectionTitleClass: 'text-base font-bold uppercase mb-2', itemClass: 'mb-3 text-sm' },
+            { id: 'sidebar', name: 'Sidebar', description: 'Two-column profile + content.', containerClass: 'max-w-6xl mx-auto md:grid md:grid-cols-3 md:gap-8', headerClass: 'md:col-span-1 md:sticky md:top-24 md:self-start border rounded-xl p-5 mb-6', sectionClass: 'md:col-span-2 mb-6', sectionTitleClass: 'text-lg font-bold border-b pb-2 mb-3', itemClass: 'mb-4' , isSidebar: true},
+            { id: 'timeline', name: 'Timeline', description: 'Role history with chronological rail.', containerClass: 'max-w-4xl mx-auto', headerClass: 'text-center mb-8', sectionClass: 'mb-8', sectionTitleClass: 'text-xl font-bold mb-4', itemClass: 'mb-6 pl-6 border-l-2 relative', isTimeline: true },
+            { id: 'ats', name: 'ATS-Friendly', description: 'Minimal visual styling for parsers.', containerClass: 'max-w-4xl mx-auto', headerClass: 'border-b pb-4 mb-6', sectionClass: 'mb-5', sectionTitleClass: 'text-lg font-bold uppercase mb-2', itemClass: 'mb-3' }
+        ];
+
+        const COLOR_PALETTES: ThemeOption[] = [
+            { id: 'slate', name: 'Slate Blue', description: 'Balanced default', primary: '#0f172a', accent: '#2563eb', text: '#1e293b', muted: '#64748b', background: '#f8fafc' },
+            { id: 'emerald', name: 'Emerald', description: 'Fresh and calm', primary: '#064e3b', accent: '#059669', text: '#134e4a', muted: '#6b7280', background: '#f0fdf4' },
+            { id: 'violet', name: 'Violet', description: 'Creative and modern', primary: '#4c1d95', accent: '#7c3aed', text: '#312e81', muted: '#6b7280', background: '#f5f3ff' },
+            { id: 'charcoal', name: 'Charcoal', description: 'ATS-safe monochrome', primary: '#111827', accent: '#374151', text: '#111827', muted: '#4b5563', background: '#ffffff' }
+        ];
+
+        const SPACING_PRESETS: SpacingOption[] = [
+            { id: 'comfortable', name: 'Comfortable', container: 'p-6 md:p-12', sectionGap: 'space-y-7', itemGap: 'space-y-5' },
+            { id: 'airy', name: 'Airy', container: 'p-8 md:p-14', sectionGap: 'space-y-9', itemGap: 'space-y-6' },
+            { id: 'compact', name: 'Compact', container: 'p-4 md:p-8', sectionGap: 'space-y-4', itemGap: 'space-y-3' }
+        ];
+
+        const BACKGROUND_STYLES: BackgroundOption[] = [
+            { id: 'plain', name: 'Plain', bodyClass: 'bg-slate-50', cardClass: 'bg-white' },
+            { id: 'grid', name: 'Grid', bodyClass: 'bg-slate-100 bg-[linear-gradient(#e2e8f0_1px,transparent_1px),linear-gradient(90deg,#e2e8f0_1px,transparent_1px)] bg-[size:32px_32px]', cardClass: 'bg-white/95 backdrop-blur-sm' },
+            { id: 'gradient', name: 'Soft Gradient', bodyClass: 'bg-gradient-to-br from-slate-100 via-white to-blue-100', cardClass: 'bg-white/95' }
         ];
 
         const INITIAL_CV_DATA: CVData = {
@@ -209,7 +281,7 @@ Paste this URL into the "Google Sheet Web App URL" field in the Granular CV Buil
         const generateCVHTML = (data: CVData, config: GeneratorConfig): string => {
             const serializedData = JSON.stringify(data).replace(/`/g, '\\`');
             const serializedConfig = JSON.stringify(config).replace(/`/g, '\\`');
-            
+
             return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -218,36 +290,15 @@ Paste this URL into the "Google Sheet Web App URL" field in the Granular CV Buil
     <title>${data.personalInfo.name} - CV</title>
     <script src="https://cdn.tailwindcss.com"><\/script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,300;0,400;0,700;1,300;1,400&family=Inter:wght@300;400;500;600&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Merriweather:wght@300;400;700&family=Inter:wght@300;400;500;600&display=swap');
         body { font-family: 'Merriweather', serif; }
         .sans { font-family: 'Inter', sans-serif; }
-        .slider-thumb::-webkit-slider-thumb {
-            appearance: none;
-            width: 20px;
-            height: 20px;
-            border-radius: 50%;
-            background: #2563eb;
-            cursor: pointer;
-            margin-top: -8px;
-        }
-        .slider-track::-webkit-slider-runnable-track {
-            width: 100%;
-            height: 4px;
-            cursor: pointer;
-            background: #cbd5e1;
-            border-radius: 2px;
-        }
-        .fade-in { animation: fadeIn 0.5s ease-in-out; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        @media print {
-            .page-break { page-break-before: always; }
-            .no-print { display: none !important; }
-        }
+        .fade-in { animation: fadeIn 0.35s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        @media print { .print\:hidden { display: none !important; } }
     </style>
 </head>
-<body class="bg-slate-50 text-slate-900 min-h-screen pb-20">
-
-    <!-- Sticky Header for Controls -->
+<body id="page-body" class="min-h-screen pb-20">
     <div class="sticky top-0 z-50 bg-white/90 backdrop-blur-md shadow-sm border-b border-slate-200 p-4 print:hidden">
         <div class="max-w-4xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
             <div class="flex flex-col w-full md:w-2/3">
@@ -258,181 +309,106 @@ Paste this URL into the "Google Sheet Web App URL" field in the Granular CV Buil
                 <input type="range" min="1" max="10" value="${config.defaultLevel}" id="granularity-slider" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer">
             </div>
             <div class="flex items-center gap-2">
-                <div class="text-xs text-slate-400 font-mono hidden sm:block">
-                    Viewing as: <span class="font-bold text-slate-600">${config.employerName}</span>
-                </div>
+                <div class="text-xs text-slate-500 font-mono hidden sm:block">Viewing as: <span class="font-bold">${config.employerName}</span></div>
                 ${config.includeTestButton ? `<button onclick="testAnalytics()" class="ml-2 px-2 py-1 bg-amber-100 text-amber-800 text-xs rounded border border-amber-300 hover:bg-amber-200">Test Analytics</button>` : ''}
             </div>
         </div>
     </div>
 
-    <!-- CV Container -->
-    <main id="cv-root" class="max-w-4xl mx-auto p-6 md:p-12 shadow-2xl bg-white mt-4 md:mt-8 mb-12 min-h-[1100px] print:shadow-none print:mt-0 print:p-0">
-        <!-- Content injected via JS -->
-    </main>
-
-    <footer class="text-center text-slate-400 text-sm py-8 print:hidden">
-        <p>Interactive CV generated for ${config.employerName}</p>
-    </footer>
-
-    <!-- Data Injection -->
+    <main id="cv-root" class="max-w-5xl mx-auto mt-4 md:mt-8 mb-12 min-h-[1100px]"></main>
+    <footer class="text-center text-slate-400 text-sm py-8 print:hidden"><p>Interactive CV generated for ${config.employerName}</p></footer>
     <script id="cv-data" type="application/json">${serializedData}<\/script>
     <script id="cv-config" type="application/json">${serializedConfig}<\/script>
-
-    <!-- App Logic -->
     <script>
         (function() {
             const data = JSON.parse(document.getElementById('cv-data').textContent);
             const config = JSON.parse(document.getElementById('cv-config').textContent);
-            
             const root = document.getElementById('cv-root');
+            const body = document.getElementById('page-body');
             const slider = document.getElementById('granularity-slider');
             const levelNameLabel = document.getElementById('level-name');
-            
             let startTime = Date.now();
             let maxScroll = 0;
             let currentLevel = parseInt(slider.value);
-            
-            // Expose for the test button
-            window.testAnalytics = function() {
-                const payload = getAnalyticsPayload();
-                const blob = new Blob([JSON.stringify(payload, null, 2)], {type: 'application/json'});
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = 'analytics_test_payload.json';
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                alert('Analytics payload downloaded! Check the file to see what data is sent to your sheet.');
-                
-                sendAnalytics(true);
+
+            const presetMap = {
+                classic: { container: 'max-w-4xl mx-auto p-6 md:p-12 shadow-2xl', section: 'mb-8', sectionTitle: 'text-xl font-bold uppercase tracking-widest border-b-2 mb-4 pb-1', item: 'mb-5', header: 'text-center border-b pb-8 mb-8' },
+                modern: { container: 'max-w-5xl mx-auto p-6 md:p-12 rounded-2xl shadow-xl', section: 'mb-6 p-5 rounded-xl border', sectionTitle: 'text-lg font-semibold mb-4', item: 'mb-4', header: 'p-8 rounded-2xl border mb-6' },
+                compact: { container: 'max-w-3xl mx-auto p-4 md:p-8 shadow-lg', section: 'mb-4', sectionTitle: 'text-base font-bold uppercase mb-2', item: 'mb-3 text-sm', header: 'border-b pb-4 mb-4' },
+                sidebar: { container: 'max-w-6xl mx-auto p-4 md:p-8 md:grid md:grid-cols-3 md:gap-8 shadow-xl', section: 'md:col-span-2 mb-6', sectionTitle: 'text-lg font-bold border-b pb-2 mb-3', item: 'mb-4', header: 'md:col-span-1 border rounded-xl p-5 mb-6 h-fit md:sticky md:top-24' },
+                timeline: { container: 'max-w-4xl mx-auto p-6 md:p-12 shadow-xl', section: 'mb-8', sectionTitle: 'text-xl font-bold mb-4', item: 'mb-6 pl-6 border-l-2 relative', header: 'text-center mb-8' },
+                ats: { container: 'max-w-4xl mx-auto p-6 md:p-10 border', section: 'mb-5', sectionTitle: 'text-lg font-bold uppercase mb-2', item: 'mb-3', header: 'border-b pb-4 mb-6' }
+            };
+            const paletteMap = {
+                slate: { primary: '#0f172a', accent: '#2563eb', text: '#1e293b', muted: '#64748b', background: '#f8fafc' },
+                emerald: { primary: '#064e3b', accent: '#059669', text: '#134e4a', muted: '#6b7280', background: '#f0fdf4' },
+                violet: { primary: '#4c1d95', accent: '#7c3aed', text: '#312e81', muted: '#6b7280', background: '#f5f3ff' },
+                charcoal: { primary: '#111827', accent: '#374151', text: '#111827', muted: '#4b5563', background: '#ffffff' }
+            };
+            const bgMap = {
+                plain: 'background:#f8fafc;',
+                grid: 'background-color:#f1f5f9;background-image:linear-gradient(#e2e8f0 1px,transparent 1px),linear-gradient(90deg,#e2e8f0 1px,transparent 1px);background-size:32px 32px;',
+                gradient: 'background:linear-gradient(135deg,#e2e8f0 0%,#ffffff 50%,#dbeafe 100%);'
             };
 
-            function getAnalyticsPayload() {
-                const duration = Math.floor((Date.now() - startTime) / 1000);
-                const scrollPercentage = Math.round((maxScroll / (document.documentElement.scrollHeight - window.innerHeight)) * 100);
-                
-                return {
-                    employer: config.employerName,
-                    timestamp: new Date().toISOString(),
-                    durationSeconds: duration,
-                    maxScrollPercentage: scrollPercentage,
-                    finalGranularity: currentLevel
-                };
-            }
-            
+            const spacingMap = {
+                comfortable: { container: 'p-6 md:p-12', section: 'mb-8', item: 'mb-5' },
+                airy: { container: 'p-8 md:p-14', section: 'mb-10', item: 'mb-6' },
+                compact: { container: 'p-4 md:p-8', section: 'mb-4', item: 'mb-3' }
+            };
+
             function render(level) {
                 currentLevel = level;
                 const activeConfig = config.levels.find(l => l.level === level) || config.levels[config.levels.length - 1];
-                levelNameLabel.textContent = \`Level \${level}: \${activeConfig.name}\`;
-                
-                let html = '';
-
-                // Header
-                html += \`
-                    <header class="mb-8 border-b border-slate-900 pb-8 text-center fade-in">
-                        \${data.personalInfo.image ? \`<img src="\${data.personalInfo.image}" alt="Profile" class="w-32 h-32 rounded-full mx-auto mb-4 object-cover border-4 border-slate-100 shadow-md">\` : ''}
-                        
-                        <div class="flex items-center justify-center gap-3 flex-wrap mb-2">
-                            <h1 class="text-3xl md:text-4xl font-serif font-bold text-slate-900">\${data.personalInfo.name}</h1>
-                            \${data.personalInfo.pronouns ? \`<span class="text-sm text-slate-500 bg-slate-100 px-2 py-1 rounded-full sans">\${data.personalInfo.pronouns}</span>\` : ''}
-                        </div>
-                        
-                        <p class="text-lg italic text-slate-600 mb-4 px-4">\${data.personalInfo.tagline}</p>
-                        
-                        <div class="flex flex-wrap justify-center gap-4 text-sm sans text-slate-500 px-4">
-                            \${data.personalInfo.email ? \`<span>\${data.personalInfo.email}</span>\` : ''}
-                            \${data.personalInfo.email && data.personalInfo.phone ? '<span>•</span>' : ''}
-                            \${data.personalInfo.phone ? \`<span>\${data.personalInfo.phone}</span>\` : ''}
-                            \${(data.personalInfo.email || data.personalInfo.phone) && data.personalInfo.location ? '<span>•</span>' : ''}
-                            \${data.personalInfo.location ? \`<span>\${data.personalInfo.location}</span>\` : ''}
-                        </div>
-
-                        <div class="mt-4 flex flex-wrap justify-center gap-4 text-sm sans font-medium text-blue-600 px-4">
-                             \${data.personalInfo.linkedin ? \`<a href="\${data.personalInfo.linkedin}" target="_blank" class="hover:underline flex items-center gap-1"><svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/></svg> LinkedIn</a>\` : ''}
-                             \${data.personalInfo.github ? \`<a href="https://\${data.personalInfo.github}" target="_blank" class="hover:underline flex items-center gap-1"><svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg> GitHub</a>\` : ''}
-                             \${data.personalInfo.calendly ? \`<a href="\${data.personalInfo.calendly}" target="_blank" class="hover:underline flex items-center gap-1"><svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg> Book Meeting</a>\` : ''}
-                        </div>
-                    </header>
-                \`;
+                const preset = presetMap[config.layoutPreset] || presetMap.classic;
+                const palette = paletteMap[config.colorPalette] || paletteMap.slate;
+                const spacing = spacingMap[config.spacing] || spacingMap.comfortable;
+                levelNameLabel.textContent = `Level ${level}: ${activeConfig.name}`;
+                body.style.cssText = bgMap[config.backgroundStyle] || bgMap.plain;
 
                 const itemsToShow = data.items.filter(item => item.granularity.includes(level));
-                
-                // Use custom section order
-                const sectionOrder = data.sectionOrder;
-                
-                const grouped = itemsToShow.reduce((acc, item) => {
-                    if (!acc[item.section]) acc[item.section] = [];
-                    acc[item.section].push(item);
-                    return acc;
-                }, {});
+                const grouped = itemsToShow.reduce((acc, item) => { if (!acc[item.section]) acc[item.section] = []; acc[item.section].push(item); return acc; }, {});
+                const contact = [data.personalInfo.email, data.personalInfo.phone, data.personalInfo.location].filter(Boolean).join(' • ');
+                const links = [
+                    data.personalInfo.linkedin ? `<a href="${data.personalInfo.linkedin}" target="_blank" style="color:${palette.accent}">LinkedIn</a>` : '',
+                    data.personalInfo.github ? `<a href="https://${data.personalInfo.github}" target="_blank" style="color:${palette.accent}">GitHub</a>` : '',
+                    data.personalInfo.calendly ? `<a href="${data.personalInfo.calendly}" target="_blank" style="color:${palette.accent}">Meeting</a>` : ''
+                ].filter(Boolean).join(' · ');
 
-                sectionOrder.forEach(section => {
-                    if (grouped[section] && grouped[section].length > 0) {
-                        html += \`
-                            <section class="mb-8 fade-in" data-section="\${section}">
-                                <h2 class="text-xl font-bold uppercase tracking-widest border-b-2 border-slate-900 mb-4 pb-1">\${section}</h2>
-                                <div class="space-y-6">
-                        \`;
-                        
-                        grouped[section].forEach(item => {
-                            html += \`
-                                <div class="group break-inside-avoid">
-                                    <div class="flex flex-col md:flex-row md:justify-between md:items-baseline mb-1">
-                                        <h3 class="text-lg font-bold text-slate-800">\${item.title}</h3>
-                                        \${item.date ? \`<span class="text-sm font-mono text-slate-500 shrink-0">\${item.date}</span>\` : ''}
-                                    </div>
-                                    \${item.subtitle ? \`<div class="text-md italic text-slate-700 mb-1">\${item.subtitle}</div>\` : ''}
-                                    \${item.location ? \`<div class="text-xs text-slate-400 mb-2">\${item.location}</div>\` : ''}
-                                    <div class="text-sm leading-relaxed text-slate-600 prose prose-sm max-w-none">
-                                        \${item.content}
-                                    </div>
-                                </div>
-                            \`;
-                        });
+                const containerClass = preset.container.replace(/p-\d+\smd:p-\d+/, spacing.container);
+                let html = `<article class="${containerClass} bg-white" style="color:${palette.text};border-color:${palette.accent}22;">
+                    <header class="${preset.header} fade-in" style="border-color:${palette.primary};">
+                        ${data.personalInfo.image ? `<img src="${data.personalInfo.image}" alt="Profile" class="w-28 h-28 rounded-full mx-auto mb-4 object-cover border-4" style="border-color:${palette.accent}22;">` : ''}
+                        <h1 class="text-3xl md:text-4xl font-serif font-bold" style="color:${palette.primary};">${data.personalInfo.name}</h1>
+                        ${data.personalInfo.pronouns ? `<div class="sans text-sm mt-1" style="color:${palette.muted};">${data.personalInfo.pronouns}</div>` : ''}
+                        <p class="text-base italic mt-3">${data.personalInfo.tagline || ''}</p>
+                        <div class="sans text-sm mt-3" style="color:${palette.muted};">${contact}</div>
+                        <div class="sans text-sm mt-2">${links}</div>
+                    </header>`;
 
-                        html += \`</div></section>\`;
-                    }
+                data.sectionOrder.forEach(section => {
+                    if (!grouped[section] || grouped[section].length === 0) return;
+                    const sectionClass = preset.section.replace(/mb-\d+/, spacing.section);
+                    html += `<section class="${sectionClass} fade-in" data-section="${section}"><h2 class="${preset.sectionTitle}" style="border-color:${palette.primary};color:${palette.primary};">${section}</h2><div>`;
+                    grouped[section].forEach(item => {
+                        const timelineDot = config.layoutPreset === 'timeline' ? `<span style="width:10px;height:10px;background:${palette.accent};position:absolute;left:-6px;top:6px;border-radius:999px;"></span>` : '';
+                        const itemClass = preset.item.replace(/mb-\d+/, spacing.item);
+                        html += `<div class="${itemClass}">${timelineDot}<div class="flex flex-col md:flex-row md:justify-between md:items-baseline gap-1"><h3 class="font-bold" style="color:${palette.primary};">${item.title}</h3>${item.date ? `<span class="sans text-xs" style="color:${palette.muted};">${item.date}</span>` : ''}</div>${item.subtitle ? `<div class="italic text-sm">${item.subtitle}</div>` : ''}${item.location ? `<div class="sans text-xs" style="color:${palette.muted};">${item.location}</div>` : ''}<div class="text-sm leading-relaxed mt-1">${item.content}</div></div>`;
+                    });
+                    html += `</div></section>`;
                 });
-
+                html += `</article>`;
                 root.innerHTML = html;
             }
 
-            slider.addEventListener('input', (e) => {
-                render(parseInt(e.target.value));
-            });
-
-            function sendAnalytics(isTest = false) {
-                if (!config.googleSheetUrl) {
-                    if(isTest) alert("No Google Sheet URL configured.");
-                    return;
-                }
-                
-                const payload = getAnalyticsPayload();
-
-                fetch(config.googleSheetUrl, {
-                    method: 'POST',
-                    mode: 'no-cors',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                })
-                .then(() => { if(isTest) alert("Data sent to Google Sheets (no-cors mode). Check your sheet."); })
-                .catch(err => { if(isTest) alert("Error sending: " + err); });
-            }
-
-            window.addEventListener('scroll', () => {
-                const currentScroll = window.scrollY;
-                if (currentScroll > maxScroll) maxScroll = currentScroll;
-            });
-
-            setInterval(() => sendAnalytics(false), 15000); 
-            document.addEventListener('visibilitychange', () => {
-                if (document.visibilityState === 'hidden') sendAnalytics(false);
-            });
-
+            slider.addEventListener('input', (e) => render(parseInt(e.target.value)));
+            window.addEventListener('scroll', () => { const y = window.scrollY; if (y > maxScroll) maxScroll = y; });
+            function getAnalyticsPayload() { const duration = Math.floor((Date.now()-startTime)/1000); const scrollPercentage = Math.round((maxScroll / (document.documentElement.scrollHeight - window.innerHeight)) * 100); return { employer: config.employerName, timestamp: new Date().toISOString(), durationSeconds: duration, maxScrollPercentage: scrollPercentage, finalGranularity: currentLevel }; }
+            function sendAnalytics(isTest=false) { if (!config.googleSheetUrl) { if(isTest) alert('No Google Sheet URL configured.'); return; } fetch(config.googleSheetUrl, { method:'POST', mode:'no-cors', headers:{'Content-Type':'application/json'}, body: JSON.stringify(getAnalyticsPayload()) }).then(() => { if(isTest) alert('Data sent to Google Sheets (no-cors mode). Check your sheet.'); }).catch(err => { if(isTest) alert('Error sending: '+err); }); }
+            window.testAnalytics = function() { const payload = getAnalyticsPayload(); const blob = new Blob([JSON.stringify(payload, null, 2)], {type: 'application/json'}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'analytics_test_payload.json'; document.body.appendChild(a); a.click(); document.body.removeChild(a); sendAnalytics(true); };
+            setInterval(() => sendAnalytics(false), 15000);
+            document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') sendAnalytics(false); });
             render(config.defaultLevel);
-
         })();
     <\/script>
 </body>
@@ -461,6 +437,10 @@ Paste this URL into the "Google Sheet Web App URL" field in the Granular CV Buil
             const [sheetUrl, setSheetUrl] = useState('');
             const [defaultLevel, setDefaultLevel] = useState(5);
             const [includeTestButton, setIncludeTestButton] = useState(true);
+            const [layoutPreset, setLayoutPreset] = useState('classic');
+            const [colorPalette, setColorPalette] = useState('slate');
+            const [spacing, setSpacing] = useState('comfortable');
+            const [backgroundStyle, setBackgroundStyle] = useState('plain');
 
             // PDF Import State
             const fileInputRef = useRef(null);
@@ -594,6 +574,18 @@ Paste this URL into the "Google Sheet Web App URL" field in the Granular CV Buil
                 setCvData(prev => ({...prev, sectionOrder: newOrder}));
             };
 
+            const buildPreviewConfig = (presetId) => ({
+                employerName: employerName || 'Preview Mode',
+                googleSheetUrl: '',
+                defaultLevel,
+                levels,
+                includeTestButton: false,
+                layoutPreset: presetId,
+                colorPalette,
+                spacing,
+                backgroundStyle
+            });
+
             const handleDownload = () => {
                 if (!employerName) {
                     alert("Please enter an employer name for tracking.");
@@ -605,7 +597,11 @@ Paste this URL into the "Google Sheet Web App URL" field in the Granular CV Buil
                     googleSheetUrl: sheetUrl,
                     defaultLevel,
                     levels,
-                    includeTestButton
+                    includeTestButton,
+                    layoutPreset,
+                    colorPalette,
+                    spacing,
+                    backgroundStyle
                 };
 
                 const htmlContent = generateCVHTML(cvData, config);
@@ -947,6 +943,50 @@ Paste this URL into the "Google Sheet Web App URL" field in the Granular CV Buil
                                 className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm"
                             />
                             <p className="text-xs text-slate-500 mt-1">Deploy a Google Apps Script to receive POST requests with JSON payloads.</p>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-semibold text-slate-700 mb-2">Layout Preset</label>
+                                    <select value={layoutPreset} onChange={(e) => setLayoutPreset(e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg">
+                                        {LAYOUT_PRESETS.map((preset) => <option key={preset.id} value={preset.id}>{preset.name}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-semibold text-slate-700 mb-2">Color Palette</label>
+                                    <select value={colorPalette} onChange={(e) => setColorPalette(e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg">
+                                        {COLOR_PALETTES.map((palette) => <option key={palette.id} value={palette.id}>{palette.name}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-semibold text-slate-700 mb-2">Spacing</label>
+                                    <select value={spacing} onChange={(e) => setSpacing(e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg">
+                                        {SPACING_PRESETS.map((space) => <option key={space.id} value={space.id}>{space.name}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-semibold text-slate-700 mb-2">Background Style</label>
+                                    <select value={backgroundStyle} onChange={(e) => setBackgroundStyle(e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg">
+                                        {BACKGROUND_STYLES.map((bg) => <option key={bg.id} value={bg.id}>{bg.name}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-semibold text-slate-700 mb-2">Responsive Template Preview</label>
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                    {LAYOUT_PRESETS.map((preset) => (
+                                        <div key={preset.id} className={`rounded-xl border ${layoutPreset === preset.id ? 'border-blue-500 ring-2 ring-blue-200' : 'border-slate-200'} overflow-hidden bg-slate-50`}>
+                                            <button onClick={() => setLayoutPreset(preset.id)} className="w-full text-left p-3 bg-white border-b border-slate-200">
+                                                <div className="font-semibold text-slate-800">{preset.name}</div>
+                                                <div className="text-xs text-slate-500">{preset.description}</div>
+                                            </button>
+                                            <div className="h-56">
+                                                <iframe title={`${preset.name} preview`} className="w-full h-full" srcDoc={generateCVHTML(cvData, buildPreviewConfig(preset.id))} />
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
 
                             <div>
